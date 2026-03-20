@@ -163,8 +163,8 @@ func sendHandler(w http.ResponseWriter, r *http.Request) {
 // @Failure 405 {string} string "Method Not Allowed"
 // @Failure 500 {string} string "Internal Server Error"
 // @Router /get [get]
+
 func getHandler(w http.ResponseWriter, r *http.Request) {
-	enableCors(&w)
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed.", http.StatusMethodNotAllowed)
 		return
@@ -191,8 +191,8 @@ func getHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer result.Body.Close()
 
-	w.Header().Set("Content-Disposition", "attachment; filename="+fileName)
-	w.Header().Set("Content-Type", "application/octet-stream")
+	w.Header().Set("Content-Disposition", "inline; filename="+fileName)
+	w.Header().Set("Content-Type", "application/pdf")
 
 	_, err = io.Copy(w, result.Body)
 	if err != nil {
