@@ -1,10 +1,5 @@
 package main
 
-// @title go-api-s3
-// @version 1.0
-// @description API for uploading and downloading files from an S3-compatible bucket.
-// @BasePath /
-
 import (
 	"context"
 	"encoding/json"
@@ -25,12 +20,17 @@ import (
 
 var s3Client *s3.Client
 
-const bucketName = "digitsd"
+var bucketName string
 
 func initAWS() {
 	err := godotenv.Load()
 	if err != nil {
 		log.Println("Environment file not found. Using system environment variables.")
+	}
+
+	bucketName = os.Getenv("AWS_BUCKET_NAME")
+	if bucketName == "" {
+		log.Fatalf("AWS_BUCKET_NAME environment variable is not set")
 	}
 
 	cfg, err := config.LoadDefaultConfig(context.TODO())
@@ -192,6 +192,54 @@ func getHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// deleteHandler
+// @Summary Delete file from S3
+// @Description Deletes a file from the configured S3 bucket using folder and file query parameters.
+// @Tags files
+// @Produce json
+// @Param folder query string true "Folder inside the bucket"
+// @Param file query string true "File name to delete"
+// @Success 200 {object} map[string]string
+// @Failure 400 {string} string "Bad Request"
+// @Failure 404 {string} string "Not Found"
+// @Failure 405 {string} string "Method Not Allowed"
+// @Failure 500 {string} string "Internal Server Error"
+// @Router /delete [delete]
+func deleteHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodDelete {
+		http.Error(w, "Method not allowed.", http.StatusMethodNotAllowed)
+		return
+	}
+
+	folder := r.URL.Query().Get("folder")
+	fileName := r.URL.Query().Get("file")
+
+	if folder == "" || fileName == "" {
+		http.Error(w, "Folder and file parameters are required.", http.StatusBadRequest)
+		return
+	}
+
+	key := path.Join(folder, fileName)
+
+	_, err := s3Client.DeleteObject(context.TODO(), &s3.DeleteObjectInput{
+		Bucket: aws.String(bucketName),
+		Key:    aws.String(key),
+	})
+
+	if err != nil {
+		http.Error(w, "Internal server error during file deletion.", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]string{
+		"status":  "success",
+		"message": "File deleted successfully.",
+		"path":    key,
+	})
+}
+
 func main() {
 	initAWS()
 	testS3Connection()
@@ -203,6 +251,7 @@ func main() {
 	http.HandleFunc("/", statusHandler)
 	http.HandleFunc("/send", sendHandler)
 	http.HandleFunc("/get", getHandler)
+	http.HandleFunc("/delete", deleteHandler)
 	http.HandleFunc("/docs/", httpSwagger.WrapHandler)
 
 	log.Println("Server is listening on port 8080.")

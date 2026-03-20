@@ -1,10 +1,5 @@
-basePath: /
-host: https://s3.pnj-digit.site
 info:
   contact: {}
-  description: API for uploading and downloading files from an S3-compatible bucket.
-  title: go-api-s3
-  version: "1.0"
 paths:
   /:
     get:
@@ -21,6 +16,49 @@ paths:
       summary: Health check
       tags:
       - health
+  /delete:
+    delete:
+      description: Deletes a file from the configured S3 bucket using folder and file
+        query parameters.
+      parameters:
+      - description: Folder inside the bucket
+        in: query
+        name: folder
+        required: true
+        type: string
+      - description: File name to delete
+        in: query
+        name: file
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            type: string
+        "404":
+          description: Not Found
+          schema:
+            type: string
+        "405":
+          description: Method Not Allowed
+          schema:
+            type: string
+        "500":
+          description: Internal Server Error
+          schema:
+            type: string
+      summary: Delete file from S3
+      tags:
+      - files
   /get:
     get:
       description: Downloads a file from the configured S3 bucket using folder and
