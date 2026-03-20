@@ -22,6 +22,12 @@ var s3Client *s3.Client
 
 var bucketName string
 
+func enableCors(w *http.ResponseWriter) {
+	(*w).Header().Set("Access-Control-Allow-Origin", "*")
+	(*w).Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS, POST")
+	(*w).Header().Set("Access-Control-Allow-Headers", "Content-Type")
+}
+
 func initAWS() {
 	err := godotenv.Load()
 	if err != nil {
@@ -75,6 +81,7 @@ func testS3Connection() {
 // @Success 200 {object} map[string]string
 // @Router / [get]
 func statusHandler(w http.ResponseWriter, r *http.Request) {
+	enableCors(&w)
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{
 		"status":  "OK",
@@ -96,6 +103,7 @@ func statusHandler(w http.ResponseWriter, r *http.Request) {
 // @Failure 500 {string} string "Internal Server Error"
 // @Router /send [post]
 func sendHandler(w http.ResponseWriter, r *http.Request) {
+	enableCors(&w)
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed.", http.StatusMethodNotAllowed)
 		return
@@ -156,6 +164,7 @@ func sendHandler(w http.ResponseWriter, r *http.Request) {
 // @Failure 500 {string} string "Internal Server Error"
 // @Router /get [get]
 func getHandler(w http.ResponseWriter, r *http.Request) {
+	enableCors(&w)
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed.", http.StatusMethodNotAllowed)
 		return
@@ -206,6 +215,7 @@ func getHandler(w http.ResponseWriter, r *http.Request) {
 // @Failure 500 {string} string "Internal Server Error"
 // @Router /delete [delete]
 func deleteHandler(w http.ResponseWriter, r *http.Request) {
+	enableCors(&w)
 	if r.Method != http.MethodDelete {
 		http.Error(w, "Method not allowed.", http.StatusMethodNotAllowed)
 		return
