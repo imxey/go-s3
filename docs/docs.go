@@ -161,6 +161,56 @@ const docTemplate = `{
                 }
             }
         },
+        "/list": {
+            "get": {
+                "description": "Lists all files in a specified folder within the configured S3 bucket and returns their download links.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "files"
+                ],
+                "summary": "List files in S3 folder",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Folder inside the bucket",
+                        "name": "folder",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "405": {
+                        "description": "Method Not Allowed",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/send": {
             "post": {
                 "description": "Uploads a single file to the configured S3 bucket under the provided folder.",

@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path"
+	"mime"
 
 	"go-api-s3/docs"
 
@@ -163,7 +164,6 @@ func sendHandler(w http.ResponseWriter, r *http.Request) {
 // @Failure 405 {string} string "Method Not Allowed"
 // @Failure 500 {string} string "Internal Server Error"
 // @Router /get [get]
-
 func getHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed.", http.StatusMethodNotAllowed)
@@ -191,8 +191,18 @@ func getHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer result.Body.Close()
 
-	w.Header().Set("Content-Disposition", "inline; filename="+fileName)
-	w.Header().Set("Content-Type", "application/pdf")
+	ext := path.Ext(fileName)
+	contentType := mime.TypeByExtension(ext)
+	if contentType == "" {
+		if result.ContentType != nil && *result.ContentType != "" {
+			contentType = *result.ContentType
+		} else {
+			contentType = "application/octet-stream"
+		}
+	}
+
+	w.Header().Set("Content-Disposition", "inline; filename=\""+fileName+"\"")
+	w.Header().Set("Content-Type", contentType)
 
 	_, err = io.Copy(w, result.Body)
 	if err != nil {
@@ -250,6 +260,61 @@ func deleteHandler(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// listHandler
+// @Summary List files in S3 folder
+// @Description Lists all files in a specified folder within the configured S3 bucket and returns their download links.
+// @Tags files
+// @Produce json
+// @Param folder query string true "Folder inside the bucket"
+// @Success 200 {array} string
+// @Failure 400 {string} string "Bad Request"
+// @Failure 405 {string} string "Method Not Allowed"
+// @Failure 500 {string} string "Internal Server Error"
+// @Router /list [get]
+func listHandler(w http.ResponseWriter, r *http.Request) {
+	enableCors(&w)
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed.", http.StatusMethodNotAllowed)
+		return
+	}
+
+	folder := r.URL.Query().Get("folder")
+	if folder == "" {
+		http.Error(w, "Folder parameter is required.", http.StatusBadRequest)
+		return
+	}
+
+	prefix := folder
+	if prefix[len(prefix)-1] != '/' {
+		prefix += "/"
+	}
+
+	output, err := s3Client.ListObjectsV2(context.TODO(), &s3.ListObjectsV2Input{
+		Bucket: aws.String(bucketName),
+		Prefix: aws.String(prefix),
+	})
+
+	if err != nil {
+		http.Error(w, "Internal server error while listing files.", http.StatusInternalServerError)
+		return
+	}
+
+	var links []string
+	for _, obj := range output.Contents {
+		fileName := path.Base(*obj.Key)
+		link := "https://s3.pnj-digit.site/get?folder=" + folder + "&file=" + fileName
+		links = append(links, link)
+	}
+
+	if links == nil {
+		links = []string{}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(links)
+}
+
 func main() {
 	initAWS()
 	testS3Connection()
@@ -263,6 +328,7 @@ func main() {
 	http.HandleFunc("/get", getHandler)
 	http.HandleFunc("/delete", deleteHandler)
 	http.HandleFunc("/docs/", httpSwagger.WrapHandler)
+	http.HandleFunc("/list", listHandler)
 
 	log.Println("Server is listening on port 8080.")
 	err := http.ListenAndServe(":8080", nil)
