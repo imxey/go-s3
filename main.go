@@ -337,7 +337,7 @@ func main() {
 	http.HandleFunc("/list", listHandler)
 
 	log.Println("Server is listening on port 8080.")
-	err := http.ListenAndServe(":8085", nil)
+	err := http.ListenAndServe(":8080", nil)
 	if err != nil {
 		log.Fatalf("Failed to start server: %v", err)
 	}
