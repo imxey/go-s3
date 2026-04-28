@@ -5,10 +5,11 @@ import (
 	"encoding/json"
 	"io"
 	"log"
+	"mime"
 	"net/http"
 	"os"
 	"path"
-	"mime"
+	"strings"
 
 	"go-api-s3/docs"
 
@@ -301,8 +302,14 @@ func listHandler(w http.ResponseWriter, r *http.Request) {
 
 	var links []string
 	for _, obj := range output.Contents {
-		fileName := path.Base(*obj.Key)
-		link := "https://s3.pnj-digit.site/get?folder=" + folder + "&file=" + fileName
+		if *obj.Key == prefix || strings.HasSuffix(*obj.Key, "/") {
+			continue
+		}
+
+		dir, file := path.Split(*obj.Key)
+		dir = strings.TrimSuffix(dir, "/")
+
+		link := "https://s3.pnj-digit.site/get?folder=" + dir + "&file=" + file
 		links = append(links, link)
 	}
 
@@ -314,7 +321,6 @@ func listHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(links)
 }
-
 func main() {
 	initAWS()
 	testS3Connection()
@@ -331,7 +337,7 @@ func main() {
 	http.HandleFunc("/list", listHandler)
 
 	log.Println("Server is listening on port 8080.")
-	err := http.ListenAndServe(":8080", nil)
+	err := http.ListenAndServe(":8085", nil)
 	if err != nil {
 		log.Fatalf("Failed to start server: %v", err)
 	}
