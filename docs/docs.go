@@ -38,6 +38,71 @@ const docTemplate = `{
                 }
             }
         },
+        "/dac": {
+            "get": {
+                "description": "Retrieves and processes DAC data from a local JSON file, grouping links by NPSN.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Migrate Digit 2025"
+                ],
+                "summary": "Get DAC data",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "405": {
+                        "description": "Method Not Allowed",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/dac.csv": {
+            "get": {
+                "description": "Retrieves DAC data from a local JSON file and returns it as a downloadable CSV file.",
+                "produces": [
+                    "text/csv"
+                ],
+                "tags": [
+                    "Migrate Digit 2025"
+                ],
+                "summary": "Get DAC data as CSV",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "file"
+                        }
+                    },
+                    "405": {
+                        "description": "Method Not Allowed",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/delete": {
             "delete": {
                 "description": "Deletes a file from the configured S3 bucket using folder and file query parameters.",
@@ -161,6 +226,71 @@ const docTemplate = `{
                 }
             }
         },
+        "/hisense": {
+            "get": {
+                "description": "Retrieves and processes Hisense data from a local JSON file, grouping links by NPSN.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Migrate Digit 2025"
+                ],
+                "summary": "Get Hisense data",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "405": {
+                        "description": "Method Not Allowed",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/hisense.csv": {
+            "get": {
+                "description": "Retrieves Hisense data from a local JSON file and returns it as a downloadable CSV file.",
+                "produces": [
+                    "text/csv"
+                ],
+                "tags": [
+                    "Migrate Digit 2025"
+                ],
+                "summary": "Get Hisense data as CSV",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "file"
+                        }
+                    },
+                    "405": {
+                        "description": "Method Not Allowed",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/list": {
             "get": {
                 "description": "Lists all files in a specified folder within the configured S3 bucket and returns their download links.",
@@ -175,6 +305,56 @@ const docTemplate = `{
                     {
                         "type": "string",
                         "description": "Folder inside the bucket",
+                        "name": "folder",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "405": {
+                        "description": "Method Not Allowed",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/list-folders": {
+            "get": {
+                "description": "Lists all subfolders within a specified folder in the configured S3 bucket.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "folders"
+                ],
+                "summary": "List folders in S3",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Parent folder inside the bucket",
                         "name": "folder",
                         "in": "query",
                         "required": true
@@ -254,6 +434,71 @@ const docTemplate = `{
                         "description": "Bad Request",
                         "schema": {
                             "type": "string"
+                        }
+                    },
+                    "405": {
+                        "description": "Method Not Allowed",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/zyrex": {
+            "get": {
+                "description": "Retrieves and processes Zyrex data from a local JSON file, grouping links by NPSN.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Migrate Digit 2025"
+                ],
+                "summary": "Get Zyrex data",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "405": {
+                        "description": "Method Not Allowed",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/zyrex.csv": {
+            "get": {
+                "description": "Retrieves Zyrex data from a local JSON file and returns it as a downloadable CSV file.",
+                "produces": [
+                    "text/csv"
+                ],
+                "tags": [
+                    "Migrate Digit 2025"
+                ],
+                "summary": "Get Zyrex data as CSV",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "file"
                         }
                     },
                     "405": {

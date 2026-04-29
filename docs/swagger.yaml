@@ -16,6 +16,51 @@ paths:
       summary: Health check
       tags:
       - health
+  /dac:
+    get:
+      description: Retrieves and processes DAC data from a local JSON file, grouping
+        links by NPSN.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "405":
+          description: Method Not Allowed
+          schema:
+            type: string
+        "500":
+          description: Internal Server Error
+          schema:
+            type: string
+      summary: Get DAC data
+      tags:
+      - Migrate Digit 2025
+  /dac.csv:
+    get:
+      description: Retrieves DAC data from a local JSON file and returns it as a downloadable
+        CSV file.
+      produces:
+      - text/csv
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: file
+        "405":
+          description: Method Not Allowed
+          schema:
+            type: string
+        "500":
+          description: Internal Server Error
+          schema:
+            type: string
+      summary: Get DAC data as CSV
+      tags:
+      - Migrate Digit 2025
   /delete:
     delete:
       description: Deletes a file from the configured S3 bucket using folder and file
@@ -100,6 +145,51 @@ paths:
       summary: Download file from S3
       tags:
       - files
+  /hisense:
+    get:
+      description: Retrieves and processes Hisense data from a local JSON file, grouping
+        links by NPSN.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "405":
+          description: Method Not Allowed
+          schema:
+            type: string
+        "500":
+          description: Internal Server Error
+          schema:
+            type: string
+      summary: Get Hisense data
+      tags:
+      - Migrate Digit 2025
+  /hisense.csv:
+    get:
+      description: Retrieves Hisense data from a local JSON file and returns it as
+        a downloadable CSV file.
+      produces:
+      - text/csv
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: file
+        "405":
+          description: Method Not Allowed
+          schema:
+            type: string
+        "500":
+          description: Internal Server Error
+          schema:
+            type: string
+      summary: Get Hisense data as CSV
+      tags:
+      - Migrate Digit 2025
   /list:
     get:
       description: Lists all files in a specified folder within the configured S3
@@ -134,6 +224,40 @@ paths:
       summary: List files in S3 folder
       tags:
       - files
+  /list-folders:
+    get:
+      description: Lists all subfolders within a specified folder in the configured
+        S3 bucket.
+      parameters:
+      - description: Parent folder inside the bucket
+        in: query
+        name: folder
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              type: string
+            type: array
+        "400":
+          description: Bad Request
+          schema:
+            type: string
+        "405":
+          description: Method Not Allowed
+          schema:
+            type: string
+        "500":
+          description: Internal Server Error
+          schema:
+            type: string
+      summary: List folders in S3
+      tags:
+      - folders
   /send:
     post:
       consumes:
@@ -175,4 +299,49 @@ paths:
       summary: Upload file to S3
       tags:
       - files
+  /zyrex:
+    get:
+      description: Retrieves and processes Zyrex data from a local JSON file, grouping
+        links by NPSN.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "405":
+          description: Method Not Allowed
+          schema:
+            type: string
+        "500":
+          description: Internal Server Error
+          schema:
+            type: string
+      summary: Get Zyrex data
+      tags:
+      - Migrate Digit 2025
+  /zyrex.csv:
+    get:
+      description: Retrieves Zyrex data from a local JSON file and returns it as a
+        downloadable CSV file.
+      produces:
+      - text/csv
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: file
+        "405":
+          description: Method Not Allowed
+          schema:
+            type: string
+        "500":
+          description: Internal Server Error
+          schema:
+            type: string
+      summary: Get Zyrex data as CSV
+      tags:
+      - Migrate Digit 2025
 swagger: "2.0"

@@ -7,10 +7,12 @@ import (
 	"log"
 	"mime"
 	"net/http"
+	"net/url"
 	"os"
 	"path"
 	"strings"
 
+	"encoding/csv"
 	"go-api-s3/docs"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -290,36 +292,495 @@ func listHandler(w http.ResponseWriter, r *http.Request) {
 		prefix += "/"
 	}
 
-	output, err := s3Client.ListObjectsV2(context.TODO(), &s3.ListObjectsV2Input{
+	log.Printf("Memulai proses penarikan data S3 untuk folder: %s", folder)
+
+	paginator := s3.NewListObjectsV2Paginator(s3Client, &s3.ListObjectsV2Input{
 		Bucket: aws.String(bucketName),
 		Prefix: aws.String(prefix),
 	})
 
-	if err != nil {
-		http.Error(w, "Internal server error while listing files.", http.StatusInternalServerError)
-		return
-	}
+	links := make([]string, 0, 150000)
+	pageCount := 0
+	totalFetched := 0
 
-	var links []string
-	for _, obj := range output.Contents {
-		if *obj.Key == prefix || strings.HasSuffix(*obj.Key, "/") {
-			continue
+	for paginator.HasMorePages() {
+		pageCount++
+		log.Printf("Memproses halaman %d...", pageCount)
+
+		page, err := paginator.NextPage(context.TODO())
+		if err != nil {
+			log.Printf("ERROR: Gagal menarik data pada halaman %d: %v", pageCount, err)
+			http.Error(w, "Internal server error while listing files.", http.StatusInternalServerError)
+			return
 		}
 
-		dir, file := path.Split(*obj.Key)
-		dir = strings.TrimSuffix(dir, "/")
+		currentBatchCount := len(page.Contents)
+		totalFetched += currentBatchCount
 
-		link := "https://s3.pnj-digit.site/get?folder=" + dir + "&file=" + file
-		links = append(links, link)
+		log.Printf("Halaman %d berhasil ditarik: +%d file. Total file sementara: %d", pageCount, currentBatchCount, totalFetched)
+
+		for _, obj := range page.Contents {
+			if *obj.Key == prefix || strings.HasSuffix(*obj.Key, "/") {
+				continue
+			}
+
+			dir, file := path.Split(*obj.Key)
+			dir = strings.TrimSuffix(dir, "/")
+
+			link := "https://s3.pnj-digit.site/get?folder=" + dir + "&file=" + file
+			links = append(links, link)
+		}
 	}
 
-	if links == nil {
-		links = []string{}
-	}
+	log.Printf("Proses selesai! Total %d halaman ditarik. Total link dibuat: %d. Mengirimkan response...", pageCount, len(links))
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(links)
+}
+
+// listFolderHandler
+// @Summary List folders in S3
+// @Description Lists all subfolders within a specified folder in the configured S3 bucket.
+// @Tags folders
+// @Produce json
+// @Param folder query string true "Parent folder inside the bucket"
+// @Success 200 {array} string
+// @Failure 400 {string} string "Bad Request"
+// @Failure 405 {string} string "Method Not Allowed"
+// @Failure 500 {string} string "Internal Server Error"
+// @Router /list-folders [get]
+func listFolderHandler(w http.ResponseWriter, r *http.Request) {
+	enableCors(&w)
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed.", http.StatusMethodNotAllowed)
+		return
+	}
+
+	folder := r.URL.Query().Get("folder")
+	if folder == "" {
+		http.Error(w, "Folder parameter is required.", http.StatusBadRequest)
+		return
+	}
+
+	prefix := folder
+	if prefix[len(prefix)-1] != '/' {
+		prefix += "/"
+	}
+
+	log.Printf("Memulai proses penarikan daftar folder NPSN untuk penyedia: %s", folder)
+
+	paginator := s3.NewListObjectsV2Paginator(s3Client, &s3.ListObjectsV2Input{
+		Bucket:    aws.String(bucketName),
+		Prefix:    aws.String(prefix),
+		Delimiter: aws.String("/"),
+	})
+
+	var folders []string
+	pageCount := 0
+
+	for paginator.HasMorePages() {
+		pageCount++
+		log.Printf("Memproses halaman %d untuk daftar folder...", pageCount)
+
+		page, err := paginator.NextPage(context.TODO())
+		if err != nil {
+			log.Printf("ERROR: Gagal menarik data folder pada halaman %d: %v", pageCount, err)
+			http.Error(w, "Internal server error while listing folders.", http.StatusInternalServerError)
+			return
+		}
+
+		for _, commonPrefix := range page.CommonPrefixes {
+			folderPath := *commonPrefix.Prefix
+			folderName := strings.TrimPrefix(folderPath, prefix)
+			folderName = strings.TrimSuffix(folderName, "/")
+
+			if folderName != "" {
+				folders = append(folders, folderName)
+			}
+		}
+	}
+
+	if folders == nil {
+		folders = []string{}
+	}
+
+	log.Printf("Proses list folder selesai! Total folder NPSN ditemukan: %d.", len(folders))
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(folders)
+}
+
+// getDacHandler
+// @Summary Get DAC data
+// @Description Retrieves and processes DAC data from a local JSON file, grouping links by NPSN.
+// @Tags Migrate Digit 2025
+// @Produce json
+// @Success 200 {object} map[string]interface{}
+// @Failure 405 {string} string "Method Not Allowed"
+// @Failure 500 {string} string "Internal Server Error"
+// @Router /dac [get]
+func getDacHandler(w http.ResponseWriter, r *http.Request) {
+	enableCors(&w)
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed.", http.StatusMethodNotAllowed)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+
+	file, err := os.Open("public/dac.json")
+	if err != nil {
+		http.Error(w, "Failed to open DAC data file.", http.StatusInternalServerError)
+		return
+	}
+	defer file.Close()
+
+	var rawLinks []string
+	err = json.NewDecoder(file).Decode(&rawLinks)
+	if err != nil {
+		http.Error(w, "Failed to decode DAC data.", http.StatusInternalServerError)
+		return
+	}
+
+	groupedData := make(map[string][]string)
+
+	for _, link := range rawLinks {
+		u, err := url.Parse(link)
+		if err != nil {
+			continue
+		}
+
+		folderParam := u.Query().Get("folder")
+		slashIndex := strings.Index(folderParam, "/")
+
+		if slashIndex != -1 && len(folderParam) >= slashIndex+9 {
+			npsn := folderParam[slashIndex+1 : slashIndex+9]
+			groupedData[npsn] = append(groupedData[npsn], link)
+		}
+	}
+
+	type NpsnData struct {
+		Npsn string   `json:"npsn"`
+		Path []string `json:"path"`
+	}
+
+	var resultData []NpsnData
+	for npsn, paths := range groupedData {
+		resultData = append(resultData, NpsnData{
+			Npsn: npsn,
+			Path: paths,
+		})
+	}
+
+	response := map[string]interface{}{
+		"status": "success",
+		"data":   resultData,
+	}
+
+	json.NewEncoder(w).Encode(response)
+}
+
+// getDacCsvHandler
+// @Summary Get DAC data as CSV
+// @Description Retrieves DAC data from a local JSON file and returns it as a downloadable CSV file.
+// @Tags Migrate Digit 2025
+// @Produce text/csv
+// @Success 200 {file} binary
+// @Failure 405 {string} string "Method Not Allowed"
+// @Failure 500 {string} string "Internal Server Error"
+// @Router /dac.csv [get]
+func getDacCsvHandler(w http.ResponseWriter, r *http.Request) {
+	enableCors(&w)
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed.", http.StatusMethodNotAllowed)
+		return
+	}
+
+	file, err := os.Open("public/dac.json")
+	if err != nil {
+		http.Error(w, "Failed to open DAC data file.", http.StatusInternalServerError)
+		return
+	}
+	defer file.Close()
+
+	var rawLinks []string
+	err = json.NewDecoder(file).Decode(&rawLinks)
+	if err != nil {
+		http.Error(w, "Failed to decode DAC data.", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Disposition", "attachment; filename=dac_data.csv")
+	w.Header().Set("Content-Type", "text/csv")
+
+	writer := csv.NewWriter(w)
+	defer writer.Flush()
+
+	writer.Write([]string{"npsn", "path"})
+
+	for _, link := range rawLinks {
+		u, err := url.Parse(link)
+		if err != nil {
+			continue
+		}
+
+		folderParam := u.Query().Get("folder")
+		slashIndex := strings.Index(folderParam, "/")
+
+		if slashIndex != -1 && len(folderParam) >= slashIndex+9 {
+			npsn := folderParam[slashIndex+1 : slashIndex+9]
+			writer.Write([]string{npsn, link})
+		}
+	}
+}
+
+// getZyrexHandler
+// @Summary Get Zyrex data
+// @Description Retrieves and processes Zyrex data from a local JSON file, grouping links by NPSN.
+// @Tags Migrate Digit 2025
+// @Produce json
+// @Success 200 {object} map[string]interface{}
+// @Failure 405 {string} string "Method Not Allowed"
+// @Failure 500 {string} string "Internal Server Error"
+// @Router /zyrex [get]
+func getZyrexHandler(w http.ResponseWriter, r *http.Request) {
+	enableCors(&w)
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed.", http.StatusMethodNotAllowed)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+
+	file, err := os.Open("public/zyrex.json")
+	if err != nil {
+		http.Error(w, "Failed to open Zyrex data file.", http.StatusInternalServerError)
+		return
+	}
+	defer file.Close()
+
+	var rawLinks []string
+	err = json.NewDecoder(file).Decode(&rawLinks)
+	if err != nil {
+		http.Error(w, "Failed to decode Zyrex data.", http.StatusInternalServerError)
+		return
+	}
+
+	groupedData := make(map[string][]string)
+
+	for _, link := range rawLinks {
+		u, err := url.Parse(link)
+		if err != nil {
+			continue
+		}
+
+		folderParam := u.Query().Get("folder")
+		slashIndex := strings.Index(folderParam, "/")
+
+		if slashIndex != -1 && len(folderParam) >= slashIndex+9 {
+			npsn := folderParam[slashIndex+1 : slashIndex+9]
+			groupedData[npsn] = append(groupedData[npsn], link)
+		}
+	}
+
+	type NpsnData struct {
+		Npsn string   `json:"npsn"`
+		Path []string `json:"path"`
+	}
+
+	var resultData []NpsnData
+	for npsn, paths := range groupedData {
+		resultData = append(resultData, NpsnData{
+			Npsn: npsn,
+			Path: paths,
+		})
+	}
+
+	response := map[string]interface{}{
+		"status": "success",
+		"data":   resultData,
+	}
+
+	json.NewEncoder(w).Encode(response)
+}
+
+// getZyrexCsvHandler
+// @Summary Get Zyrex data as CSV
+// @Description Retrieves Zyrex data from a local JSON file and returns it as a downloadable CSV file.
+// @Tags Migrate Digit 2025
+// @Produce text/csv
+// @Success 200 {file} binary
+// @Failure 405 {string} string "Method Not Allowed"
+// @Failure 500 {string} string "Internal Server Error"
+// @Router /zyrex.csv [get]
+func getZyrexCsvHandler(w http.ResponseWriter, r *http.Request) {
+	enableCors(&w)
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed.", http.StatusMethodNotAllowed)
+		return
+	}
+
+	file, err := os.Open("public/zyrex.json")
+	if err != nil {
+		http.Error(w, "Failed to open Zyrex data file.", http.StatusInternalServerError)
+		return
+	}
+	defer file.Close()
+
+	var rawLinks []string
+	err = json.NewDecoder(file).Decode(&rawLinks)
+	if err != nil {
+		http.Error(w, "Failed to decode Zyrex data.", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Disposition", "attachment; filename=zyrex_data.csv")
+	w.Header().Set("Content-Type", "text/csv")
+
+	writer := csv.NewWriter(w)
+	defer writer.Flush()
+
+	writer.Write([]string{"npsn", "path"})
+
+	for _, link := range rawLinks {
+		u, err := url.Parse(link)
+		if err != nil {
+			continue
+		}
+
+		folderParam := u.Query().Get("folder")
+		slashIndex := strings.Index(folderParam, "/")
+
+		if slashIndex != -1 && len(folderParam) >= slashIndex+9 {
+			npsn := folderParam[slashIndex+1 : slashIndex+9]
+			writer.Write([]string{npsn, link})
+		}
+	}
+}
+// getHisenseHandler
+// @Summary Get Hisense data
+// @Description Retrieves and processes Hisense data from a local JSON file, grouping links by NPSN.
+// @Tags Migrate Digit 2025
+// @Produce json
+// @Success 200 {object} map[string]interface{}
+// @Failure 405 {string} string "Method Not Allowed"
+// @Failure 500 {string} string "Internal Server Error"
+// @Router /hisense [get]
+func getHisenseHandler(w http.ResponseWriter, r *http.Request) {
+	enableCors(&w)
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed.", http.StatusMethodNotAllowed)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+
+	file, err := os.Open("public/hisense.json")
+	if err != nil {
+		http.Error(w, "Failed to open Hisense data file.", http.StatusInternalServerError)
+		return
+	}
+	defer file.Close()
+
+	var rawLinks []string
+	err = json.NewDecoder(file).Decode(&rawLinks)
+	if err != nil {
+		http.Error(w, "Failed to decode Hisense data.", http.StatusInternalServerError)
+		return
+	}
+
+	groupedData := make(map[string][]string)
+
+	for _, link := range rawLinks {
+		u, err := url.Parse(link)
+		if err != nil {
+			continue
+		}
+
+		folderParam := u.Query().Get("folder")
+		slashIndex := strings.Index(folderParam, "/")
+
+		if slashIndex != -1 && len(folderParam) >= slashIndex+9 {
+			npsn := folderParam[slashIndex+1 : slashIndex+9]
+			groupedData[npsn] = append(groupedData[npsn], link)
+		}
+	}
+
+	type NpsnData struct {
+		Npsn string   `json:"npsn"`
+		Path []string `json:"path"`
+	}
+
+	var resultData []NpsnData
+	for npsn, paths := range groupedData {
+		resultData = append(resultData, NpsnData{
+			Npsn: npsn,
+			Path: paths,
+		})
+	}
+
+	response := map[string]interface{}{
+		"status": "success",
+		"data":   resultData,
+	}
+
+	json.NewEncoder(w).Encode(response)
+}
+
+// getHisenseCsvHandler
+// @Summary Get Hisense data as CSV
+// @Description Retrieves Hisense data from a local JSON file and returns it as a downloadable CSV file.
+// @Tags Migrate Digit 2025
+// @Produce text/csv
+// @Success 200 {file} binary
+// @Failure 405 {string} string "Method Not Allowed"
+// @Failure 500 {string} string "Internal Server Error"
+// @Router /hisense.csv [get]
+func getHisenseCsvHandler(w http.ResponseWriter, r *http.Request) {
+	enableCors(&w)
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed.", http.StatusMethodNotAllowed)
+		return
+	}
+
+	file, err := os.Open("public/hisense.json")
+	if err != nil {
+		http.Error(w, "Failed to open Hisense data file.", http.StatusInternalServerError)
+		return
+	}
+	defer file.Close()
+
+	var rawLinks []string
+	err = json.NewDecoder(file).Decode(&rawLinks)
+	if err != nil {
+		http.Error(w, "Failed to decode Hisense data.", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Disposition", "attachment; filename=hisense_data.csv")
+	w.Header().Set("Content-Type", "text/csv")
+
+	writer := csv.NewWriter(w)
+	defer writer.Flush()
+
+	writer.Write([]string{"npsn", "path"})
+
+	for _, link := range rawLinks {
+		u, err := url.Parse(link)
+		if err != nil {
+			continue
+		}
+
+		folderParam := u.Query().Get("folder")
+		slashIndex := strings.Index(folderParam, "/")
+
+		if slashIndex != -1 && len(folderParam) >= slashIndex+9 {
+			npsn := folderParam[slashIndex+1 : slashIndex+9]
+			writer.Write([]string{npsn, link})
+		}
+	}
 }
 func main() {
 	initAWS()
@@ -335,7 +796,13 @@ func main() {
 	http.HandleFunc("/delete", deleteHandler)
 	http.HandleFunc("/docs/", httpSwagger.WrapHandler)
 	http.HandleFunc("/list", listHandler)
-
+	http.HandleFunc("/list-folders", listFolderHandler)
+	http.HandleFunc("/dac", getDacHandler)
+	http.HandleFunc("/dac.csv", getDacCsvHandler)
+	http.HandleFunc("/zyrex", getZyrexHandler)
+	http.HandleFunc("/zyrex.csv", getZyrexCsvHandler)
+	http.HandleFunc("/hisense", getHisenseHandler)
+	http.HandleFunc("/hisense.csv", getHisenseCsvHandler)
 	log.Println("Server is listening on port 8080.")
 	err := http.ListenAndServe(":8080", nil)
 	if err != nil {
