@@ -168,6 +168,13 @@ func sendHandler(w http.ResponseWriter, r *http.Request) {
 // @Failure 500 {string} string "Internal Server Error"
 // @Router /get [get]
 func getHandler(w http.ResponseWriter, r *http.Request) {
+	enableCors(&w)
+
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed.", http.StatusMethodNotAllowed)
 		return
